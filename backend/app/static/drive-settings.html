@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Configurar Google Drive</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<style>
+  .wrap { max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  .card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin-bottom: 16px; }
+  .card h2 { margin-top: 0; font-size: 16px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; margin-bottom: 4px; color: var(--muted); }
+  .field input[type=text] { width: 100%; }
+  .status-msg { margin-top: 10px; font-size: 13px; }
+  .status-msg.ok { color: var(--success); }
+  .status-msg.err { color: var(--danger); }
+  .back-link { display: inline-block; margin-bottom: 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back-link" href="/app.html">← Volver a la aplicación</a>
+  <div class="card">
+    <h2>☁ Configurar Google Drive</h2>
+    <p class="help-text">Esta configuración es compartida por todos los usuarios del servidor y solo la puede cambiar un administrador.</p>
+
+    <div class="field">
+      <label>Enlace (o ID) de la carpeta de Google Drive</label>
+      <input type="text" id="folderLink" placeholder="https://drive.google.com/drive/folders/...">
+    </div>
+
+    <div class="field">
+      <label>Archivo de credenciales OAuth (tipo "Aplicación web", ver README)</label>
+      <input type="file" id="credentialsFile" accept=".json">
+    </div>
+
+    <button class="primary" id="btnSaveSettings">Guardar configuración</button>
+    <div class="status-msg" id="saveStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>Autorización con Google</h2>
+    <p class="help-text">
+      Estado credenciales: <b id="credStatus">—</b><br>
+      Estado autorización: <b id="tokenStatus">—</b>
+    </p>
+    <button class="primary" id="btnAuthorize">Autorizar con Google</button>
+    <button id="btnTestConnection">Probar conexión</button>
+    <div class="status-msg" id="testStatus"></div>
+  </div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/drive-settings.js"></script>
+</body>
+</html>

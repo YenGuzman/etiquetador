@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Etiquetador de Lesiones Papilares</title>
+<link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+<div class="app-shell">
+
+  <!-- ---------- Barra superior ---------- -->
+  <div class="toolbar">
+    <div class="dropdown" id="fileDropdown">
+      <button id="fileDropdownBtn">Archivo</button>
+      <div class="dropdown-menu">
+        <button id="btnUploadImages">🖼 Subir imágenes…</button>
+        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff" style="display:none">
+        <hr>
+        <button id="menuSave">💾 Guardar</button>
+        <button id="menuExport">Exportar dataset…</button>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <span>Modo:</span>
+    <div class="mode-group" id="modeGroup">
+      <button data-mode="point" class="active">Punto (P)</button>
+      <button data-mode="polygon">Polígono (G)</button>
+      <button data-mode="freehand">Libre (L)</button>
+    </div>
+
+    <div class="sep"></div>
+
+    <span>Etiqueta activa:</span>
+    <select id="categorySelect" style="min-width:160px;"></select>
+    <select id="labelSelect" style="min-width:200px;" disabled></select>
+
+    <div class="dropdown" id="labelsDropdown">
+      <button id="labelsDropdownBtn">Etiquetas</button>
+      <div class="dropdown-menu">
+        <button id="menuManageLabels">Gestionar etiquetas…</button>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div class="dropdown" id="driveDropdown">
+      <button id="driveDropdownBtn">☁ Drive</button>
+      <div class="dropdown-menu">
+        <button id="menuUploadDrive">⬆ Subir a Drive</button>
+        <hr>
+        <button id="menuConfigDrive">Configurar Google Drive…</button>
+      </div>
+    </div>
+
+    <div class="spacer"></div>
+    <div class="dropdown user-dropdown" id="userDropdown">
+      <button id="userDropdownBtn" class="user-dropdown-btn">Usuario</button>
+      <div class="dropdown-menu">
+        <button id="adminLink" style="display:none;">Administración</button>
+        <button id="logoutBtn">Cerrar sesión</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ---------- Cuerpo ---------- -->
+  <div class="body-area">
+    <div class="canvas-area" id="canvasArea">
+      <div class="canvas-placeholder" id="canvasPlaceholder">Sube imágenes desde el menú "Archivo" para empezar.</div>
+      <canvas id="canvas" style="display:none;"></canvas>
+    </div>
+
+    <div class="side-panel">
+      <h3>Anotaciones en esta imagen</h3>
+      <div class="list-box" id="annotationList"></div>
+      <button id="btnDeleteSelectedAnnotation">Eliminar seleccionada</button>
+
+      <h3 style="margin-top:10px;">Imágenes</h3>
+      <div class="list-box" id="imageList"></div>
+    </div>
+  </div>
+
+  <!-- ---------- Barra inferior ---------- -->
+  <div class="bottom-bar">
+    <div class="left">
+      <button id="btnSave">💾 Guardar</button>
+      <button id="btnExport">Exportar dataset…</button>
+      <button id="btnUndo">↶ Deshacer (Ctrl+Z)</button>
+    </div>
+    <div class="mid">
+      <button id="btnZoomOut">🔍−</button>
+      <span class="zoom-pct" id="zoomPct">100%</span>
+      <button id="btnZoomIn">🔍+</button>
+      <button id="btnFit" style="margin-left:8px;">Ajustar</button>
+    </div>
+    <div class="right">
+      <button id="btnPrev">⟵ Anterior</button>
+      <button id="btnNext">Siguiente ⟶</button>
+    </div>
+  </div>
+
+  <!-- ---------- Barra de estado ---------- -->
+  <div class="status-bar">
+    <span id="statusLeft">Ningún proyecto abierto.</span>
+    <span id="statusRight">Polígono: clic añade vértice, Enter cierra · Libre: arrastra y suelta · Esc cancela · Ctrl+Z deshace</span>
+  </div>
+</div>
+
+<!-- ---------- Modal: gestor de etiquetas ---------- -->
+<div class="modal-overlay" id="labelsModal">
+  <div class="modal-box">
+    <h2>Gestionar etiquetas</h2>
+    <div id="labelsListContainer"></div>
+    <div class="modal-actions">
+      <button id="btnAddCategory" class="primary">Agregar categoría general…</button>
+      <button id="btnAddLabel">Agregar subetiqueta…</button>
+      <button id="btnCloseLabelsModal">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ---------- Modal: subida a Drive (progreso) ---------- -->
+<div class="modal-overlay" id="driveProgressModal">
+  <div class="modal-box">
+    <h2>Subiendo a Google Drive…</h2>
+    <div class="progress-bar-track"><div class="progress-bar-fill" id="driveProgressFill"></div></div>
+    <div class="progress-label" id="driveProgressLabel">Preparando…</div>
+    <div class="modal-actions">
+      <button id="btnCancelDriveUpload" class="danger">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/app.js"></script>
+</body>
+</html>

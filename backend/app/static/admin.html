@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Administración de usuarios</title>
+<link rel="stylesheet" href="/static/css/style.css">
+<style>
+  .wrap { max-width: 640px; margin: 40px auto; padding: 0 16px; }
+  .card { background: white; border: 1px solid var(--border); border-radius: 10px; padding: 24px; margin-bottom: 16px; }
+  .card h2 { margin-top: 0; font-size: 16px; }
+  .field { margin-bottom: 14px; }
+  .field label { display: block; margin-bottom: 4px; color: var(--muted); }
+  .field input[type=text], .field input[type=password] { width: 100%; }
+  .user-row { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid #f0f1f3; }
+  .user-row .name { flex:1; }
+  .back-link { display: inline-block; margin-bottom: 16px; }
+  label.inline { display:flex; align-items:center; gap:6px; margin-bottom: 14px; color: var(--text); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <a class="back-link" href="/app.html">← Volver a la aplicación</a>
+
+  <div class="card">
+    <h2>Crear nuevo usuario</h2>
+    <div class="field">
+      <label>Usuario</label>
+      <input type="text" id="newUsername">
+    </div>
+    <div class="field">
+      <label>Contraseña</label>
+      <input type="password" id="newPassword">
+    </div>
+    <label class="inline"><input type="checkbox" id="newIsAdmin"> Es administrador</label>
+    <button class="primary" id="btnCreateUser">Crear usuario</button>
+    <div class="status-msg" id="createStatus"></div>
+  </div>
+
+  <div class="card">
+    <h2>Usuarios existentes</h2>
+    <div id="usersList"></div>
+  </div>
+</div>
+
+<script src="/static/js/api.js"></script>
+<script src="/static/js/admin.js"></script>
+</body>
+</html>
