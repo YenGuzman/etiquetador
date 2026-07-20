@@ -6,7 +6,6 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
-from httpx import request
 from sqlalchemy.orm import Session
 
 from .. import models, schemas, config, drive_sync
