@@ -6,6 +6,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
+from httpx import request
 from sqlalchemy.orm import Session
 
 from .. import models, schemas, config, drive_sync
@@ -110,6 +111,7 @@ def oauth_start(request: Request, db: Session = Depends(get_db), admin: models.U
         access_type="offline", include_granted_scopes="true", prompt="consent"
     )
     request.session["drive_oauth_state"] = state
+    request.session["drive_oauth_code_verifier"] = flow.code_verifier
     return RedirectResponse(auth_url)
 
 
@@ -126,6 +128,7 @@ def oauth_callback(request: Request, code: Optional[str] = None, state: Optional
     s = _get_settings(db)
     client_config = json.loads(s.client_config_json)
     flow = drive_sync.build_flow(client_config, REDIRECT_URI, state=state)
+    flow.code_verifier = request.session.get("drive_oauth_code_verifier")
     try:
         flow.fetch_token(code=code)
     except Exception as e:
@@ -133,6 +136,10 @@ def oauth_callback(request: Request, code: Optional[str] = None, state: Optional
 
     s.token_json = flow.credentials.to_json()
     db.commit()
+
+    request.session.pop("drive_oauth_state", None)
+    request.session.pop("drive_oauth_code_verifier", None)
+
     return RedirectResponse("/drive-settings.html?drive_ok=1")
 
 
