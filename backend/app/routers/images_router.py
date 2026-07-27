@@ -196,6 +196,9 @@ def unlock_image(image_id: int, db: Session = Depends(get_db), user: models.User
 @router.delete("/{image_id}")
 def delete_image(image_id: int, db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     image = _get_image_or_404(image_id, db)
+    locked_by, age = _lock_info(image, db)
+    if locked_by is not None and locked_by != user.username:
+        raise HTTPException(409, f"Esta imagen está siendo editada por {locked_by}.")
     path = os.path.join(config.IMAGES_DIR, image.filename)
     if os.path.isfile(path):
         try:

@@ -466,11 +466,78 @@ function renderImageList() {
     const lockedByOther = img.locked_by && img.locked_by !== state.me.username;
     item.innerHTML = `
       <span>${img.has_annotations ? '<span class="check">✔</span> ' : ""}${escapeHtml(img.original_filename)}</span>
-      ${lockedByOther ? `<span class="lock-badge">🔒 ${escapeHtml(img.locked_by)}</span>` : ""}
+      <span style="display:flex; align-items:center; gap:6px;">
+        ${lockedByOther ? `<span class="lock-badge">🔒 ${escapeHtml(img.locked_by)}</span>` : ""}
+        <button data-action="delete-image" title="Eliminar esta imagen" style="padding:1px 6px; font-size:12px;">🗑</button>
+      </span>
     `;
     item.addEventListener("click", () => loadImageAt(idx));
+    item.querySelector('[data-action="delete-image"]').addEventListener("click", (e) => {
+      e.stopPropagation(); // no abrir la imagen al hacer clic en "eliminar"
+      deleteImageAt(idx);
+    });
     box.appendChild(item);
   });
+}
+
+async function deleteImageAt(idx) {
+  const img = state.images[idx];
+  if (!img) return;
+  if (img.locked_by && img.locked_by !== state.me.username) {
+    alert(`No se puede eliminar: ${img.locked_by} la está editando ahora mismo.`);
+    return;
+  }
+  if (!confirm(`¿Eliminar "${img.original_filename}" de la aplicación?\n\nEsto NO borra nada de Google Drive, solo quita la imagen y sus anotaciones de aquí. Esta acción no se puede deshacer.`)) {
+    return;
+  }
+
+  const wasCurrent = idx === state.currentIndex;
+
+  try {
+    if (wasCurrent) {
+      stopHeartbeat();
+      if (!state.readOnly) {
+        try { await Api.unlockImage(img.id); } catch (e) {}
+      }
+    }
+    await Api.deleteImage(img.id);
+  } catch (e) {
+    alert("No se pudo eliminar la imagen: " + e.message);
+    return;
+  }
+
+  delete state.undoStacks[img.id];
+
+  if (wasCurrent) {
+    state.currentImageId = null;
+    state.currentIndex = -1;
+    state.currentAnn = { points: [], regions: [] };
+    state.imgEl = null;
+    state.selectedAnnotationId = null;
+    cancelTempDrawing();
+    canvas.style.display = "none";
+    canvasPlaceholder.style.display = "block";
+  }
+
+  await refreshImageList();
+
+  if (state.images.length === 0) {
+    setStatus("No hay imágenes todavía. Súbelas desde el menú Archivo.");
+    renderAnnotationList();
+    return;
+  }
+
+  if (wasCurrent) {
+    // Abrir la imagen que quedó en el mismo lugar de la lista, o la anterior
+    // si la eliminada era la última.
+    const nextIndex = Math.min(idx, state.images.length - 1);
+    await loadImageAt(nextIndex);
+  } else if (idx < state.currentIndex) {
+    // Una imagen ANTES de la actual se eliminó: el índice de la actual se
+    // corrió una posición hacia atrás, hay que actualizarlo sin recargarla.
+    state.currentIndex -= 1;
+    renderImageList();
+  }
 }
 
 async function onUploadFiles(e) {
