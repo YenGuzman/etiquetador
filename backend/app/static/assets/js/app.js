@@ -5,6 +5,7 @@ const ZOOM_STEP = 1.2;
 const MIN_ZOOM = 0.05;
 const MAX_ZOOM = 8;
 const HEARTBEAT_INTERVAL_MS = 20000;
+const LOCK_POLL_INTERVAL_MS = 2000;
 const POINT_RADIUS = 5;
 const VERTEX_RADIUS = 4;
 
@@ -22,8 +23,11 @@ const state = {
   currentLabelId: null,
   currentCategoryId: null,
   selectedAnnotationId: null,
+  selectedLabelId: null,
   readOnly: false,
   heartbeatTimer: null,
+  lockPollTimer: null,
+  lockPollInFlight: false,
   undoStacks: {},        // imageId -> [{points, regions}, ...]
   polygonPoints: [],
   freehandActive: false,
@@ -50,22 +54,29 @@ async function init() {
   document.getElementById("userDropdownBtn").textContent = state.me.username;
   if (state.me.is_admin) {
     document.getElementById("adminLink").style.display = "block";
+    document.getElementById("btnSave").style.display = "inline-block";
+    document.getElementById("btnExport").style.display = "inline-block";
   } else {
     document.getElementById("menuConfigDrive").style.display = "none";
+    document.getElementById("labelsDropdown").style.display = "none";
+    document.getElementById("btnSave").style.display = "none";
+    document.getElementById("btnExport").style.display = "none";
   }
 
   bindUI();
   await refreshLabels();
   await refreshImageList();
+  startLockPolling();
 
   if (state.images.length > 0) {
     await loadImageAt(0);
   } else {
-    setStatus("No hay imágenes todavía. Súbelas desde el menú Archivo.");
+    setStatus('No hay imágenes todavía. Súbelas con el botón "🖼 Subir imagen".');
   }
 }
 
 window.addEventListener("beforeunload", () => {
+  stopLockPolling();
   if (state.currentImageId && !state.readOnly) {
     navigator.sendBeacon(`/api/images/${state.currentImageId}/unlock`);
   }
@@ -95,7 +106,6 @@ document.addEventListener("click", () => {
 // ---------------------------------------------------------------------
 
 function bindUI() {
-  setupDropdown("fileDropdown", "fileDropdownBtn");
   setupDropdown("labelsDropdown", "labelsDropdownBtn");
   setupDropdown("driveDropdown", "driveDropdownBtn");
   setupDropdown("userDropdown", "userDropdownBtn");
@@ -105,9 +115,7 @@ function bindUI() {
   });
   document.getElementById("fileInput").addEventListener("change", onUploadFiles);
 
-  document.getElementById("menuSave").addEventListener("click", saveCurrentAnnotations);
   document.getElementById("btnSave").addEventListener("click", saveCurrentAnnotations);
-  document.getElementById("menuExport").addEventListener("click", exportDataset);
   document.getElementById("btnExport").addEventListener("click", exportDataset);
 
   document.getElementById("menuManageLabels").addEventListener("click", openLabelsModal);
@@ -147,7 +155,6 @@ function bindUI() {
   document.getElementById("btnPrev").addEventListener("click", goPrevious);
   document.getElementById("btnNext").addEventListener("click", goNext);
 
-  document.getElementById("btnDeleteSelectedAnnotation").addEventListener("click", deleteSelectedAnnotation);
 
   document.getElementById("btnCancelDriveUpload").addEventListener("click", async () => {
     await Api.cancelDriveUpload();
@@ -166,15 +173,38 @@ function onKeyDown(e) {
   const tag = (e.target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "select" || tag === "textarea") return;
 
+  const ctrlOrCmd = e.ctrlKey || e.metaKey;
+
+  if (ctrlOrCmd && (e.key === "z" || e.key === "Z")) { e.preventDefault(); undo(); return; }
+  if (ctrlOrCmd && (e.key === "s" || e.key === "S")) { e.preventDefault(); saveCurrentAnnotations(); return; }
+  if (ctrlOrCmd) return; // cualquier otra combinación con Ctrl/Cmd no la interceptamos
+
   if (e.key === "ArrowRight" || e.key === "ArrowDown") { e.preventDefault(); goNext(); }
   else if (e.key === "ArrowLeft" || e.key === "ArrowUp") { e.preventDefault(); goPrevious(); }
   else if (e.key === "p" || e.key === "P") setMode("point");
   else if (e.key === "g" || e.key === "G") setMode("polygon");
   else if (e.key === "l" || e.key === "L") setMode("freehand");
+  else if (e.key === "s" || e.key === "S") setMode("select");
   else if (e.key === "Escape") cancelTempDrawing();
   else if (e.key === "Enter") finishPolygon();
-  else if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z")) { e.preventDefault(); undo(); }
-  else if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) { e.preventDefault(); saveCurrentAnnotations(); }
+  else if (e.key === "Backspace" || e.key === "Delete") {
+    const labelsModalOpen = document.getElementById("labelsModal").classList.contains("open");
+    if (labelsModalOpen) {
+      if (state.selectedLabelId) {
+        e.preventDefault();
+        const l = state.labels.find((x) => x.id === state.selectedLabelId);
+        if (l) deleteLabelFlow(l);
+      }
+    } else if (state.selectedAnnotationId) {
+      // Si hay una anotación seleccionada, Delete/Backspace elimina la
+      // anotación antes que la imagen completa.
+      e.preventDefault();
+      deleteAnnotationById(state.selectedAnnotationId);
+    } else if (state.currentIndex >= 0) {
+      e.preventDefault();
+      deleteImageAt(state.currentIndex);
+    }
+  }
 }
 
 function setMode(mode) {
@@ -183,6 +213,7 @@ function setMode(mode) {
   document.querySelectorAll("#modeGroup button").forEach((b) => {
     b.classList.toggle("active", b.dataset.mode === mode);
   });
+  canvas.style.cursor = mode === "select" ? "pointer" : "crosshair";
 }
 
 // ---------------------------------------------------------------------
@@ -296,7 +327,23 @@ function openLabelsModal() {
   document.getElementById("labelsModal").classList.add("open");
 }
 function closeLabelsModal() {
+  state.selectedLabelId = null;
   document.getElementById("labelsModal").classList.remove("open");
+}
+
+async function deleteLabelFlow(l) {
+  const warning = l.is_category
+    ? `¿Eliminar la categoría "${l.name}"? Sus subtags NO se borran, quedarán "sin categoría".`
+    : `¿Eliminar la etiqueta "${l.name}"? Las anotaciones que ya la usan no se borran, pero quedarán con un nombre que ya no existe en la lista.`;
+  if (!confirm(warning)) return;
+  try {
+    await Api.deleteLabel(l.id);
+    if (state.selectedLabelId === l.id) state.selectedLabelId = null;
+    await refreshLabels();
+    renderLabelsModal();
+  } catch (e) {
+    alert(e.message);
+  }
 }
 
 function buildCategoryOptionsHtml(selectedId) {
@@ -311,7 +358,7 @@ function buildCategoryOptionsHtml(selectedId) {
 
 function makeLabelRow(l, { indent = false } = {}) {
   const row = document.createElement("div");
-  row.className = "label-row" + (indent ? " indent" : "");
+  row.className = "label-row" + (indent ? " indent" : "") + (l.id === state.selectedLabelId ? " selected" : "");
   if (indent) row.style.marginLeft = "20px";
   row.innerHTML = `
     <span class="color-dot" style="background:${l.color}"></span>
@@ -320,9 +367,18 @@ function makeLabelRow(l, { indent = false } = {}) {
     <span class="actions">
       <button data-action="rename">Renombrar</button>
       <button data-action="color">Color</button>
-      <button data-action="delete">Eliminar</button>
+      <button data-action="delete" title="Eliminar" style="padding:1px 6px; font-size:12px;">🗑</button>
     </span>
   `;
+
+  // Clic en la fila (fuera de los botones/select) la selecciona, para poder
+  // borrarla luego con Backspace igual que con las imágenes.
+  row.addEventListener("click", (e) => {
+    if (e.target.closest("button, select")) return;
+    state.selectedLabelId = state.selectedLabelId === l.id ? null : l.id;
+    renderLabelsModal();
+  });
+
   row.querySelector('[data-action="rename"]').addEventListener("click", async () => {
     const newName = prompt("Nuevo nombre:", l.name);
     if (!newName) return;
@@ -348,17 +404,7 @@ function makeLabelRow(l, { indent = false } = {}) {
     });
     input.click();
   });
-  row.querySelector('[data-action="delete"]').addEventListener("click", async () => {
-    const warning = l.is_category
-      ? `¿Eliminar la categoría "${l.name}"? Sus subtags NO se borran, quedarán "sin categoría".`
-      : `¿Eliminar la etiqueta "${l.name}"? Las anotaciones que ya la usan no se borran, pero quedarán con un nombre que ya no existe en la lista.`;
-    if (!confirm(warning)) return;
-    try {
-      await Api.deleteLabel(l.id);
-      await refreshLabels();
-      renderLabelsModal();
-    } catch (e) { alert(e.message); }
-  });
+  row.querySelector('[data-action="delete"]').addEventListener("click", () => deleteLabelFlow(l));
   const parentSelect = row.querySelector('[data-action="parent"]');
   if (parentSelect) {
     parentSelect.addEventListener("change", async () => {
@@ -457,6 +503,66 @@ async function refreshImageList() {
   renderImageList();
 }
 
+function startLockPolling() {
+  stopLockPolling();
+  pollImageLocks();
+  state.lockPollTimer = setInterval(pollImageLocks, LOCK_POLL_INTERVAL_MS);
+}
+
+function stopLockPolling() {
+  if (state.lockPollTimer) {
+    clearInterval(state.lockPollTimer);
+    state.lockPollTimer = null;
+  }
+}
+
+async function pollImageLocks() {
+  if (state.lockPollInFlight || !state.me) return;
+  state.lockPollInFlight = true;
+  try {
+    const locks = await Api.listImageLocks();
+    let listChanged = false;
+
+    state.images.forEach((img) => {
+      const lock = locks[String(img.id)];
+      const newLockedBy = lock ? lock.locked_by : null;
+      const newAge = lock ? lock.locked_seconds_ago : null;
+      if (img.locked_by !== newLockedBy || img.locked_seconds_ago !== newAge) {
+        img.locked_by = newLockedBy;
+        img.locked_seconds_ago = newAge;
+        listChanged = true;
+      }
+    });
+
+    // Si la imagen abierta pasa a estar bloqueada por otra persona,
+    // cambia inmediatamente a solo lectura para evitar editar contra un bloqueo ajeno.
+    const current = state.currentImageId
+      ? state.images.find((img) => img.id === state.currentImageId)
+      : null;
+
+    if (current) {
+      const lockedByOther = current.locked_by && current.locked_by !== state.me.username;
+      if (lockedByOther && !state.readOnly) {
+        stopHeartbeat();
+        state.readOnly = true;
+        state.selectedAnnotationId = null;
+        cancelTempDrawing();
+        redraw();
+        renderAnnotationList();
+        updateStatus();
+        listChanged = true;
+      }
+    }
+
+    if (listChanged) renderImageList();
+  } catch (e) {
+    // El polling no debe interrumpir el trabajo si una consulta falla temporalmente.
+    console.debug("No se pudo actualizar el estado de los bloqueos", e);
+  } finally {
+    state.lockPollInFlight = false;
+  }
+}
+
 function renderImageList() {
   const box = document.getElementById("imageList");
   box.innerHTML = "";
@@ -522,7 +628,7 @@ async function deleteImageAt(idx) {
   await refreshImageList();
 
   if (state.images.length === 0) {
-    setStatus("No hay imágenes todavía. Súbelas desde el menú Archivo.");
+    setStatus('No hay imágenes todavía. Súbelas con el botón "🖼 Subir imagen".');
     renderAnnotationList();
     return;
   }
@@ -752,23 +858,41 @@ function drawAnnotations() {
   for (const r of state.currentAnn.regions) {
     const color = labelColor(r.label, r.label_id, r.category);
     const selected = r.id === state.selectedAnnotationId;
-    ctx.lineWidth = selected ? 3 : 2;
-    ctx.strokeStyle = color;
     if (r.type === "rect") {
       const [[x1, y1], [x2, y2]] = r.coords;
-      ctx.strokeRect(x1 * state.scale, y1 * state.scale, (x2 - x1) * state.scale, (y2 - y1) * state.scale);
+      const rx = x1 * state.scale, ry = y1 * state.scale;
+      const rw = (x2 - x1) * state.scale, rh = (y2 - y1) * state.scale;
+      if (selected) {
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = "#ffffff";
+        ctx.strokeRect(rx, ry, rw, rh);
+      }
+      ctx.lineWidth = selected ? 3 : 2;
+      ctx.strokeStyle = color;
+      ctx.strokeRect(rx, ry, rw, rh);
       ctx.fillStyle = color;
       ctx.font = "bold 12px sans-serif";
       labelDisplayText(r).split("\n").forEach((line, i) => {
         ctx.fillText(line, Math.min(x1, x2) * state.scale + 3, Math.min(y1, y2) * state.scale + 12 + i * 14);
       });
     } else if (r.type === "polygon") {
-      ctx.beginPath();
-      r.coords.forEach(([x, y], i) => {
-        const cx = x * state.scale, cy = y * state.scale;
-        if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
-      });
-      ctx.closePath();
+      const buildPath = () => {
+        ctx.beginPath();
+        r.coords.forEach(([x, y], i) => {
+          const cx = x * state.scale, cy = y * state.scale;
+          if (i === 0) ctx.moveTo(cx, cy); else ctx.lineTo(cx, cy);
+        });
+        ctx.closePath();
+      };
+      if (selected) {
+        buildPath();
+        ctx.lineWidth = 6;
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+      }
+      buildPath();
+      ctx.lineWidth = selected ? 3 : 2;
+      ctx.strokeStyle = color;
       ctx.stroke();
       ctx.fillStyle = color;
       ctx.font = "bold 12px sans-serif";
@@ -812,6 +936,52 @@ function screenDistXY(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by) * state.scale;
 }
 
+function pointInRect(x, y, coords) {
+  const [[x1, y1], [x2, y2]] = coords;
+  const minX = Math.min(x1, x2), maxX = Math.max(x1, x2);
+  const minY = Math.min(y1, y2), maxY = Math.max(y1, y2);
+  return x >= minX && x <= maxX && y >= minY && y <= maxY;
+}
+
+function pointInPolygon(x, y, coords) {
+  // Algoritmo estándar de ray-casting.
+  let inside = false;
+  for (let i = 0, j = coords.length - 1; i < coords.length; j = i++) {
+    const [xi, yi] = coords[i];
+    const [xj, yj] = coords[j];
+    const intersect =
+      yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function findAnnotationAt(x, y) {
+  // Los puntos son objetivos pequeños y precisos: se revisan primero.
+  // Se recorre en reversa para preferir el más reciente en caso de solape.
+  const POINT_HIT_TOLERANCE_PX = POINT_RADIUS + 4;
+  for (let i = state.currentAnn.points.length - 1; i >= 0; i--) {
+    const p = state.currentAnn.points[i];
+    if (screenDistXY(x, y, p.x, p.y) <= POINT_HIT_TOLERANCE_PX) {
+      return p;
+    }
+  }
+  for (let i = state.currentAnn.regions.length - 1; i >= 0; i--) {
+    const r = state.currentAnn.regions[i];
+    const hit = r.type === "rect" ? pointInRect(x, y, r.coords) : pointInPolygon(x, y, r.coords);
+    if (hit) return r;
+  }
+  return null;
+}
+
+function selectAnnotation(idOrNull) {
+  state.selectedAnnotationId = idOrNull;
+  redraw();
+  renderAnnotationList();
+  const el = document.querySelector(`#annotationList .list-item.selected`);
+  if (el) el.scrollIntoView({ block: "nearest" });
+}
+
 function toImageCoords(e) {
   const rect = canvas.getBoundingClientRect();
   const x = (e.clientX - rect.left) / state.scale;
@@ -821,7 +991,7 @@ function toImageCoords(e) {
 
 function requireLabel() {
   if (!state.currentLabel) {
-    if (state.labels.length === 0 && confirm("Todavía no existen etiquetas. ¿Deseas crear una ahora?")) {
+    if (confirm("No hay una etiqueta activa seleccionada. ¿Quieres abrir el gestor de etiquetas para crear o elegir una?")) {
       openLabelsModal();
     }
     return false;
@@ -832,6 +1002,14 @@ function requireLabel() {
 function onCanvasMouseDown(e) {
   if (!state.imgEl || state.readOnly) return;
   if (e.button !== 0) return;
+
+  if (state.mode === "select") {
+    const [x, y] = toImageCoords(e);
+    const found = findAnnotationAt(x, y);
+    selectAnnotation(found ? found.id : null);
+    return;
+  }
+
   if (!requireLabel()) return;
   const [x, y] = toImageCoords(e);
 
@@ -970,33 +1148,99 @@ function uuid() {
 function renderAnnotationList() {
   const box = document.getElementById("annotationList");
   box.innerHTML = "";
-  for (const p of state.currentAnn.points) {
+
+  const annotations = [
+    ...state.currentAnn.points.map((p) => ({ ...p, _kind: "point" })),
+    ...state.currentAnn.regions.map((r) => ({ ...r, _kind: "region" })),
+  ];
+
+  for (const annotation of annotations) {
     const item = document.createElement("div");
-    item.className = "list-item" + (p.id === state.selectedAnnotationId ? " selected" : "");
-    item.textContent = `● Punto — ${p.label} (${Math.round(p.x)}, ${Math.round(p.y)})`;
-    item.addEventListener("click", () => { state.selectedAnnotationId = p.id; redraw(); renderAnnotationList(); });
-    box.appendChild(item);
-  }
-  for (const r of state.currentAnn.regions) {
-    const item = document.createElement("div");
-    item.className = "list-item" + (r.id === state.selectedAnnotationId ? " selected" : "");
-    const shape = r.type === "rect" ? "Rectángulo" : `Polígono (${r.coords.length} pts)`;
-    item.textContent = `▭ ${shape} — ${r.label}`;
-    item.addEventListener("click", () => { state.selectedAnnotationId = r.id; redraw(); renderAnnotationList(); });
+    item.className = "list-item annotation-item" +
+      (annotation.id === state.selectedAnnotationId ? " selected" : "");
+
+    const labelText = labelDisplayText(annotation).replace(/\n/g, " · ");
+    const description = annotation._kind === "point"
+      ? `● Punto — ${labelText} (${Math.round(annotation.x)}, ${Math.round(annotation.y)})`
+      : `▭ ${annotation.type === "rect" ? "Rectángulo" : `Polígono (${annotation.coords.length} pts)`} — ${labelText}`;
+
+    item.innerHTML = `
+      <span class="annotation-name">${escapeHtml(description)}</span>
+      <span class="annotation-actions">
+        <button data-action="edit-annotation" class="icon-action" title="Cambiar etiqueta" aria-label="Cambiar etiqueta">✏️</button>
+        <button data-action="delete-annotation" class="icon-action danger-icon" title="Eliminar etiqueta" aria-label="Eliminar etiqueta">🗑</button>
+      </span>
+    `;
+
+    item.addEventListener("click", () => {
+      state.selectedAnnotationId = annotation.id;
+      redraw();
+      renderAnnotationList();
+    });
+
+    item.querySelector('[data-action="edit-annotation"]').addEventListener("click", (e) => {
+      e.stopPropagation();
+      state.selectedAnnotationId = annotation.id;
+      reassignAnnotationById(annotation.id);
+    });
+
+    item.querySelector('[data-action="delete-annotation"]').addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteAnnotationById(annotation.id);
+    });
+
     box.appendChild(item);
   }
 }
 
-function deleteSelectedAnnotation() {
-  if (!state.selectedAnnotationId) return;
+function deleteAnnotationById(id) {
+  if (!id) return;
+  const target =
+    state.currentAnn.points.find((p) => p.id === id) ||
+    state.currentAnn.regions.find((r) => r.id === id);
+  if (!target) return;
+
+  const labelText = labelDisplayText(target).replace(/\n/g, " · ");
+  if (!confirm(`¿Eliminar la etiqueta "${labelText}" de esta anotación?`)) return;
+
   pushUndo();
-  const id = state.selectedAnnotationId;
   state.currentAnn.points = state.currentAnn.points.filter((p) => p.id !== id);
   state.currentAnn.regions = state.currentAnn.regions.filter((r) => r.id !== id);
   state.selectedAnnotationId = null;
   renderAnnotationList();
   redraw();
   updateStatus();
+}
+
+function deleteSelectedAnnotation() {
+  if (!state.selectedAnnotationId) return;
+  deleteAnnotationById(state.selectedAnnotationId);
+}
+
+function reassignAnnotationById(id) {
+  if (!id) return;
+  if (!requireLabel()) return;
+
+  const target =
+    state.currentAnn.points.find((p) => p.id === id) ||
+    state.currentAnn.regions.find((r) => r.id === id);
+  if (!target) return;
+
+  pushUndo();
+  target.label = state.currentLabel;
+  target.label_id = state.currentLabelId;
+  target.category = state.currentCategoryId;
+  redraw();
+  renderAnnotationList();
+  updateStatus();
+}
+
+function reassignSelectedLabel() {
+  if (!state.selectedAnnotationId) {
+    alert("Primero selecciona una anotación (modo Seleccionar, o haciendo clic en la lista).");
+    return;
+  }
+  reassignAnnotationById(state.selectedAnnotationId);
 }
 
 // ---------------------------------------------------------------------

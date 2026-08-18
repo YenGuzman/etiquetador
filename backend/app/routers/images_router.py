@@ -13,7 +13,7 @@ from PIL import Image as PILImage
 
 from .. import models, schemas, config
 from ..database import get_db
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_admin
 
 router = APIRouter(prefix="/api/images", tags=["images"])
 
@@ -49,6 +49,25 @@ def _to_summary(image: models.Image, db: Session) -> schemas.ImageSummary:
 def list_images(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
     images = db.query(models.Image).order_by(models.Image.id).all()
     return [_to_summary(img, db) for img in images]
+
+
+@router.get("/locks")
+def list_image_locks(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+    """Devuelve únicamente los bloqueos activos para actualizar la UI sin recargar las imágenes."""
+    images = db.query(models.Image).filter(
+        models.Image.locked_by_id.isnot(None),
+        models.Image.locked_at.isnot(None),
+    ).all()
+
+    locks = {}
+    for image in images:
+        locked_by, age = _lock_info(image, db)
+        if locked_by is not None:
+            locks[str(image.id)] = {
+                "locked_by": locked_by,
+                "locked_seconds_ago": age,
+            }
+    return locks
 
 
 @router.post("/upload")
@@ -96,7 +115,7 @@ async def upload_images(
 
 
 @router.get("/export")
-def export_dataset(db: Session = Depends(get_db), user: models.User = Depends(get_current_user)):
+def export_dataset(db: Session = Depends(get_db), user: models.User = Depends(get_current_admin)):
     labels = db.query(models.Label).order_by(models.Label.name).all()
     images = db.query(models.Image).order_by(models.Image.id).all()
     dataset = {

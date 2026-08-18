@@ -60,6 +60,7 @@ const Api = (() => {
     deleteLabel: (id) => request("DELETE", `/api/labels/${id}`),
 
     listImages: () => request("GET", "/api/images"),
+    listImageLocks: () => request("GET", "/api/images/locks"),
     uploadImages: (fileList) => {
       const fd = new FormData();
       for (const f of fileList) fd.append("files", f);

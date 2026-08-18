@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from .. import models, schemas
 from ..database import get_db
-from ..auth import get_current_user
+from ..auth import get_current_user, get_current_admin
 
 router = APIRouter(prefix="/api/labels", tags=["labels"])
 
@@ -54,7 +54,7 @@ def list_labels(db: Session = Depends(get_db), user: models.User = Depends(get_c
 
 @router.post("/categories", response_model=schemas.LabelOut)
 def create_category(payload: schemas.CategoryIn, db: Session = Depends(get_db),
-                     user: models.User = Depends(get_current_user)):
+                     user: models.User = Depends(get_current_admin)):
     name = payload.name.strip()
     if not name:
         raise HTTPException(400, "El nombre de la categoría no puede estar vacío.")
@@ -70,7 +70,7 @@ def create_category(payload: schemas.CategoryIn, db: Session = Depends(get_db),
 
 @router.post("", response_model=schemas.LabelOut)
 def create_label(payload: schemas.LabelIn, db: Session = Depends(get_db),
-                  user: models.User = Depends(get_current_user)):
+                  user: models.User = Depends(get_current_admin)):
     name = payload.name.strip()
     if not name:
         raise HTTPException(400, "El nombre de la etiqueta no puede estar vacío.")
@@ -110,7 +110,7 @@ def create_label(payload: schemas.LabelIn, db: Session = Depends(get_db),
 
 @router.patch("/{label_id}/parent", response_model=schemas.LabelOut)
 def set_label_parent(label_id: int, payload: schemas.LabelParentUpdate, db: Session = Depends(get_db),
-                      user: models.User = Depends(get_current_user)):
+                      user: models.User = Depends(get_current_admin)):
     label = db.query(models.Label).filter(models.Label.id == label_id).first()
     if not label:
         raise HTTPException(404, "Etiqueta no encontrada.")
@@ -145,7 +145,7 @@ def set_label_parent(label_id: int, payload: schemas.LabelParentUpdate, db: Sess
 
 @router.patch("/{label_id}/rename", response_model=schemas.LabelOut)
 def rename_label(label_id: int, payload: schemas.LabelRename, db: Session = Depends(get_db),
-                  user: models.User = Depends(get_current_user)):
+                  user: models.User = Depends(get_current_admin)):
     label = db.query(models.Label).filter(models.Label.id == label_id).first()
     if not label:
         raise HTTPException(404, "Etiqueta no encontrada.")
@@ -181,7 +181,7 @@ def rename_label(label_id: int, payload: schemas.LabelRename, db: Session = Depe
 
 @router.patch("/{label_id}/color", response_model=schemas.LabelOut)
 def set_label_color(label_id: int, payload: schemas.LabelColor, db: Session = Depends(get_db),
-                     user: models.User = Depends(get_current_user)):
+                     user: models.User = Depends(get_current_admin)):
     label = db.query(models.Label).filter(models.Label.id == label_id).first()
     if not label:
         raise HTTPException(404, "Etiqueta no encontrada.")
@@ -193,7 +193,7 @@ def set_label_color(label_id: int, payload: schemas.LabelColor, db: Session = De
 
 @router.delete("/{label_id}")
 def delete_label(label_id: int, db: Session = Depends(get_db),
-                  user: models.User = Depends(get_current_user)):
+                  user: models.User = Depends(get_current_admin)):
     label = db.query(models.Label).filter(models.Label.id == label_id).first()
     if not label:
         raise HTTPException(404, "Etiqueta no encontrada.")

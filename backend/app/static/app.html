@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Etiquetador de Lesiones Papilares</title>
+<title>Etiquetador de Lesiones Intraductales</title>
 <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
@@ -11,16 +11,8 @@
 
   <!-- ---------- Barra superior ---------- -->
   <div class="toolbar">
-    <div class="dropdown" id="fileDropdown">
-      <button id="fileDropdownBtn">Archivo</button>
-      <div class="dropdown-menu">
-        <button id="btnUploadImages">🖼 Subir imágenes…</button>
-        <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff" style="display:none">
-        <hr>
-        <button id="menuSave">💾 Guardar</button>
-        <button id="menuExport">Exportar dataset…</button>
-      </div>
-    </div>
+    <button id="btnUploadImages">🖼 Subir imagen</button>
+    <input type="file" id="fileInput" multiple accept=".jpg,.jpeg,.png,.bmp,.tif,.tiff" style="display:none">
 
     <div class="sep"></div>
 
@@ -29,6 +21,7 @@
       <button data-mode="point" class="active">Punto (P)</button>
       <button data-mode="polygon">Polígono (G)</button>
       <button data-mode="freehand">Libre (L)</button>
+      <button data-mode="select">Seleccionar (S)</button>
     </div>
 
     <div class="sep"></div>
@@ -68,14 +61,13 @@
   <!-- ---------- Cuerpo ---------- -->
   <div class="body-area">
     <div class="canvas-area" id="canvasArea">
-      <div class="canvas-placeholder" id="canvasPlaceholder">Sube imágenes desde el menú "Archivo" para empezar.</div>
+      <div class="canvas-placeholder" id="canvasPlaceholder">Sube imágenes con el botón "🖼 Subir imagen" para empezar.</div>
       <canvas id="canvas" style="display:none;"></canvas>
     </div>
 
     <div class="side-panel">
       <h3>Anotaciones en esta imagen</h3>
       <div class="list-box" id="annotationList"></div>
-      <button id="btnDeleteSelectedAnnotation">Eliminar seleccionada</button>
 
       <h3 style="margin-top:10px;">Imágenes</h3>
       <div class="list-box" id="imageList"></div>
@@ -104,7 +96,7 @@
   <!-- ---------- Barra de estado ---------- -->
   <div class="status-bar">
     <span id="statusLeft">Ningún proyecto abierto.</span>
-    <span id="statusRight">Polígono: clic añade vértice, Enter cierra · Libre: arrastra y suelta · Esc cancela · Ctrl+Z deshace</span>
+    <span id="statusRight">Polígono: clic añade vértice, Enter cierra · Libre: arrastra y suelta · Seleccionar: clic sobre una anotación · Esc cancela · Ctrl+Z deshace · Backspace borra</span>
   </div>
 </div>
 

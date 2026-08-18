@@ -57,8 +57,6 @@ def bootstrap_default_categories():
         for name, color in defaults:
             existing = db.query(models.Label).filter(models.Label.name == name).first()
             if existing:
-                # Ya existía una etiqueta plana con ese nombre (poco probable,
-                # pero por si acaso no la duplicamos ni la convertimos sola).
                 continue
             db.add(models.Label(name=name, color=color, is_category=True, parent_id=None))
         db.commit()
@@ -70,7 +68,7 @@ def bootstrap_default_categories():
 bootstrap_admin()
 bootstrap_default_categories()
 
-app = FastAPI(title="Etiquetador de Lesiones Papilares (Web)")
+app = FastAPI(title="Etiquetador de Lesiones Intraductales (Web)")
 
 app.add_middleware(
     SessionMiddleware,

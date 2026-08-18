@@ -245,11 +245,48 @@ input[type="text"], input[type="password"], select {
 }
 .label-row.indent { background: #fafbfc; }
 .label-row:hover { background: #f5f7fa; }
+.label-row.selected { background: #dbeafe; }
+.label-row { cursor: pointer; }
+.label-row select, .label-row button { cursor: default; }
 .label-row select { max-width: 140px; }
 .color-dot { width: 16px; height: 16px; border-radius: 50%; flex: none; border: 1px solid rgba(0,0,0,0.15); }
 .label-row .name { flex: 1; }
 .label-row .actions { display: flex; gap: 4px; }
 .label-row button { padding: 2px 6px; font-size: 12px; }
+
+.annotation-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.annotation-item .annotation-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.annotation-actions {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  flex: none;
+}
+.annotation-item .icon-action {
+  padding: 2px 5px;
+  border: 1px solid var(--border);
+  background: transparent;
+  border-radius: 4px;
+  line-height: 1;
+  cursor: pointer;
+}
+.annotation-item .icon-action:hover {
+  background: #eef1f5;
+}
+.annotation-item .danger-icon:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
 
 .progress-bar-track { background: #e5e7eb; border-radius: 6px; height: 10px; overflow: hidden; margin: 10px 0 4px; }
 .progress-bar-fill { background: var(--accent); height: 100%; width: 0%; transition: width .2s; }
