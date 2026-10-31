@@ -145,13 +145,18 @@ input[type="text"], input[type="password"], select {
   min-height: 0;
 }
 
-.canvas-area {
-  flex: 1;
-  position: relative;
-  overflow: auto;
-  background: var(--canvas-bg);
+.canvas-area { 
+  flex: 1; 
+  position: relative; 
+  overflow: auto; 
+  background: var(--canvas-bg); 
+  display: flex; 
 }
-.canvas-area canvas { display: block; cursor: crosshair; }
+.canvas-area canvas { display: block; 
+  cursor: crosshair; 
+  margin: auto; 
+  flex: none; 
+}
 .canvas-placeholder {
   color: #aaa;
   position: absolute;

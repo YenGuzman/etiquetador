@@ -38,31 +38,121 @@ def bootstrap_admin():
         db.close()
 
 
+
 def bootstrap_default_categories():
-    """Crea las categorías generales Benigno/Maligno/Sospechoso la primera
-    vez que arranca la app (si todavía no existe ninguna categoría). Las
-    etiquetas ya creadas antes de este cambio quedan disponibles como
-    subtags "sin categoría" y se pueden reasignar luego desde el gestor de
-    etiquetas."""
+    """
+    Crea las categorias y subtags predeterminados si todavia no existen.
+
+    Las categorias generales tienen is_category=True y parent_id=None.
+    Los subtags tienen is_category=False y parent_id apuntando a su categoria.
+
+    No duplica categorias ni subtags existentes.
+    """
     db = SessionLocal()
+
     try:
-        has_category = db.query(models.Label).filter(models.Label.is_category == True).first()
-        if has_category:
-            return
-        defaults = [
-            ("Benigno", "#3cb44b"),
-            ("Sospechoso", "#f58231"),
-            ("Maligno", "#e6194b"),
-        ]
-        for name, color in defaults:
-            existing = db.query(models.Label).filter(models.Label.name == name).first()
-            if existing:
-                continue
-            db.add(models.Label(name=name, color=color, is_category=True, parent_id=None))
+        # Categorias y sus respectivos subtags.
+        defaults = {
+            "Atipicas/Precursora": [
+                "Hiperplasia Ductal Atipica en papiloma",
+                "Hiperplasia ductal atipica",
+            ],
+            "Neoplasia Benigna": [
+                "Adenoma Ductal",
+                "Papiloma Esclerosado",
+                "Papiloma intraductal",
+            ],
+            "Neoplasia Maligna": [
+                "Carcinoma Ductal in situ Comedo",
+                "Carcinoma Ductal in situ Cribiforme",
+                "Carcinoma Ductal in situ Micropapilar",
+                "Carcinoma Ductal in situ Papilar",
+                "Carcinoma Ductal in situ solido",
+                "Carcinoma ductal in situ en papiloma",
+                "Carcinoma papilar encapsulado",
+                "Carcinoma papilar solido in situ",
+            ],
+            "No neoplasicas": [
+                "Ectasia Ductal",
+                "Hiperplasia apocrina / Papilar apocrina",
+                "Hiperplasia intraductal usual",
+                "Metaplasia escamosa",
+            ],
+        }
+
+        # Colores para las categorias generales.
+        category_colors = {
+            "Atipicas/Precursora": "#3cb44b",
+            "Neoplasia Benigna": "#3cb44b",
+            "Neoplasia Maligna": "#3cb44b",
+            "No neoplasicas": "#3cb44b",
+        }
+
+        # Crear o recuperar las categorias.
+        categories = {}
+
+        for category_name, subtags in defaults.items():
+            category = (
+                db.query(models.Label)
+                .filter(
+                    models.Label.name == category_name,
+                    models.Label.is_category.is_(True),
+                    models.Label.parent_id.is_(None),
+                )
+                .first()
+            )
+
+            if category is None:
+                category = models.Label(
+                    name=category_name,
+                    color=category_colors[category_name],
+                    is_category=True,
+                    parent_id=None,
+                )
+                db.add(category)
+                db.flush()
+
+            categories[category_name] = category
+
+        # Crear los subtags asociados a cada categoria.
+        for category_name, subtags in defaults.items():
+            category = categories[category_name]
+
+            for subtag_name in subtags:
+                existing = (
+                    db.query(models.Label)
+                    .filter(
+                        models.Label.name == subtag_name,
+                        models.Label.is_category.is_(False),
+                        models.Label.parent_id == category.id,
+                    )
+                    .first()
+                )
+
+                if existing is None:
+                    db.add(
+                        models.Label(
+                            name=subtag_name,
+                            color="#3cb44b",
+                            is_category=False,
+                            parent_id=category.id,
+                        )
+                    )
+
         db.commit()
-        print("[bootstrap] Categorías por defecto creadas: Benigno, Sospechoso, Maligno.")
+
+        print(
+            "[bootstrap] Categorias y subtags predeterminados "
+            "creados o verificados correctamente."
+        )
+
+    except Exception:
+        db.rollback()
+        raise
+
     finally:
         db.close()
+
 
 
 bootstrap_admin()
@@ -85,7 +175,7 @@ app.include_router(drive_router.router)
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
-# Sirve los archivos estáticos del frontend (HTML/CSS/JS) bajo la raíz,
+# Sirve los archivos estáticos del frontend (HTML/CSS/JS) bajo la raiz,
 # pero dejando pasar primero /api/* (definido arriba) hacia los routers.
 app.mount("/static", StaticFiles(directory=os.path.join(STATIC_DIR, "assets")), name="static")
 
