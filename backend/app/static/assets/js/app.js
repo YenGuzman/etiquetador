@@ -162,8 +162,10 @@ function bindUI() {
   });
  
   canvas.addEventListener("mousedown", onCanvasMouseDown);
-  canvas.addEventListener("mousemove", onCanvasMouseMove);
-  canvas.addEventListener("mouseup", onCanvasMouseUp);
+  // Movimiento y soltar se escuchan en todo el documento (no solo sobre el
+  // canvas) para que el trazo libre siga al mouse aunque salga de la imagen.
+  document.addEventListener("mousemove", onCanvasMouseMove);
+  document.addEventListener("mouseup", onCanvasMouseUp);
   canvas.addEventListener("dblclick", onCanvasDoubleClick);
   // La rueda se escucha en todo el área gris (no solo sobre la imagen), para
   // poder hacer zoom aunque la imagen quede pequeña tras alejarla.
@@ -1078,6 +1080,16 @@ function toImageCoords(e) {
   return [x, y];
 }
  
+// Devuelve el punto de la imagen más cercano a (x, y): si el mouse está fuera
+// de la imagen, se ajusta al borde. Las coordenadas siguen siendo las mismas
+// (píxeles de la imagen original).
+function clampToImage(x, y) {
+  return [
+    Math.max(0, Math.min(state.imgEl.width, x)),
+    Math.max(0, Math.min(state.imgEl.height, y)),
+  ];
+}
+ 
 function requireLabel() {
   if (!state.currentLabel) {
     if (confirm("No hay una etiqueta activa seleccionada. ¿Quieres abrir el gestor de etiquetas para crear o elegir una?")) {
@@ -1133,7 +1145,10 @@ function onCanvasMouseDown(e) {
 function onCanvasMouseMove(e) {
   if (!state.imgEl || state.readOnly) return;
   if (state.mode === "freehand" && state.freehandActive) {
-    const [x, y] = toImageCoords(e);
+    // Red de seguridad: si el botón ya no está presionado (por ejemplo se soltó
+    // fuera de la ventana), se termina el trazo en vez de seguir dibujando.
+    if (e.buttons === 0) { finishFreehandAtMouse(e); return; }
+    const [x, y] = clampToImage(...toImageCoords(e));
     const [lastX, lastY] = state.freehandPoints[state.freehandPoints.length - 1];
     const distScreen = screenDistXY(x, y, lastX, lastY);
     if (distScreen >= 3) {
@@ -1153,8 +1168,21 @@ function onCanvasMouseMove(e) {
 function onCanvasMouseUp(e) {
   if (!state.imgEl || state.readOnly) return;
   if (state.mode === "freehand" && state.freehandActive) {
-    finishFreehand();
+    finishFreehandAtMouse(e);
   }
+}
+ 
+// Termina el trazo libre como si el mouse se hubiera soltado en el punto de la
+// imagen más cercano a su posición actual.
+function finishFreehandAtMouse(e) {
+  const [rx, ry] = toImageCoords(e);
+  const [x, y] = clampToImage(rx, ry);
+  const outside = (x !== rx || y !== ry);
+  if (outside && state.freehandPoints.length > 0) {
+    const [lastX, lastY] = state.freehandPoints[state.freehandPoints.length - 1];
+    if (lastX !== x || lastY !== y) state.freehandPoints.push([x, y]);
+  }
+  finishFreehand();
 }
  
 function onCanvasDoubleClick(e) {

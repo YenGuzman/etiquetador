@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .env
 backend/docker-compose.yml
+render.yaml
